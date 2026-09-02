@@ -568,7 +568,9 @@ function posAt(round, t) {
   if (!next) next = prev;
   var span = next.t - prev.t;
   var f = span > 0 ? Math.max(0, Math.min(1, (t - prev.t) / span)) : 0;
+  // 좌표를 모르는 선수(null)는 그리지 않는다 — 외부 데이터는 킬 순간의 생존자만 담긴다
   var loc = prev.loc.map(function (a, i) {
+    if (!a) return null;
     var b = next.loc[i] || a;
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2]];
   });
@@ -662,6 +664,13 @@ function replayHTML(m) {
     ? '<div class="samplewarn">샘플 데이터입니다 — 좌표는 실제 경기 위치가 아니라 ' +
       '화면 확인용으로 생성한 가상 값입니다. 라운드 승패·승리 방식만 실제와 같습니다.</div>'
     : '';
+  // 외부에서 가져온 위치 데이터는 출처를 밝힌다
+  var credit = rep.source
+    ? '<div class="tdim" style="font-size:12px;margin:0 0 8px">위치 데이터 출처: ' +
+      (rep.source_url
+        ? '<a href="' + h(rep.source_url) + '" target="_blank" rel="noopener">' + h(rep.source) + ' ↗</a>'
+        : h(rep.source)) + '</div>'
+    : '';
 
   var secs = Math.floor(t / 1000);
   var clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
@@ -675,7 +684,7 @@ function replayHTML(m) {
         '" data-sp="' + s + '">' + s + '×</button>';
     }).join('') + '</div>';
 
-  return warn +
+  return warn + credit +
     '<div class="card rpcard">' +
     '<div class="rptop"><b>Round ' + round.n + '</b>' +
     '<span class="tdim"> / ' + rep.rounds.length + ' · ' + h(rep.map) + '</span></div>' +
