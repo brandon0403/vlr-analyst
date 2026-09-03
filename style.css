@@ -225,10 +225,12 @@ select { max-width: 330px; }
 }
 .rpcard { padding: 16px 18px 14px; }
 .rptop { font-size: 17px; margin-bottom: 12px; }
-.rpbody { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.rpbody { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .rpmap {
   background: #0a0c0f; border: 1px solid var(--line); border-radius: 10px;
   overflow: hidden; aspect-ratio: 1 / 1;
+  /* 정사각형이라 폭 상한이 없으면 넓은 화면에서 세로로도 그만큼 커진다 */
+  width: 100%; max-width: 620px; justify-self: center;
 }
 .mmap { display: block; width: 100%; height: 100%; }
 .mmap image { opacity: .55; }
@@ -382,6 +384,12 @@ select { max-width: 330px; }
 @media (max-width: 700px) {
   .rmoney { grid-template-columns: 1fr; }
   .rhead .rsc { margin-left: 0; }
+}
+
+/* 좁은 화면에서는 미니맵과 이벤트를 나란히 두면 둘 다 못 쓸 만큼 좁아진다 */
+@media (max-width: 820px) {
+  .rpbody { grid-template-columns: minmax(0, 1fr); }
+  .feed { max-height: 260px; }
 }
 
 /* 경기 영상 링크 */
