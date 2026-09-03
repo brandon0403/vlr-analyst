@@ -589,7 +589,7 @@ function posAt(round, t) {
   (round.events || []).forEach(function (e) {
     if (e.type === 'kill' && e.t <= t) dead[e.victim] = e.t;
   });
-  return { loc: cur.loc, dead: dead, at: cur.t, stale: t > cur.t };
+  return { loc: cur.loc, dead: dead, at: cur.t, stale: t > cur.t, ev: cur };
 }
 
 function minimapSVG(rep, cal, round, t) {
@@ -633,11 +633,23 @@ function minimapSVG(rep, cal, round, t) {
         body + '<circle class="ring" cx="' + cx + '" cy="' + cy + '" r="' + R + '"/></g>';
     });
   }
+  // 이 장면이 킬이면 잡은 쪽 → 죽은 쪽으로 점선을 잇는다 (깜박이며 눈에 띄게)
+  var link = '';
+  if (st && st.ev && st.ev.type === 'kill') {
+    var kp = st.ev.loc[st.ev.killer], vp = st.ev.loc[st.ev.victim];
+    if (kp && vp) {
+      var a = toMinimap(cal, kp[0], kp[1]), b = toMinimap(cal, vp[0], vp[1]);
+      var cl = function (v) { return Math.max(0, Math.min(100, v * 100)).toFixed(2); };
+      var team = rep.players[st.ev.killer] ? rep.players[st.ev.killer].team : 0;
+      link = '<line class="klink t' + team + '" x1="' + cl(a[0]) + '" y1="' + cl(a[1]) +
+        '" x2="' + cl(b[0]) + '" y2="' + cl(b[1]) + '"/>';
+    }
+  }
   return '<svg class="mmap" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">' +
     '<defs>' + defs + '</defs>' +
     '<image href="' + h(img) + '" x="0" y="0" width="100" height="100" ' +
     'transform="rotate(90 50 50)"/>' +
-    cones + marks + '</svg>';
+    cones + link + marks + '</svg>';
 }
 
 function feedHTML(rep, round, t) {
