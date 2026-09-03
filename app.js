@@ -716,10 +716,24 @@ function replayHTML(m) {
     '개 순간</b>에만 기록돼 있습니다. 그 사이 이동 경로는 원본에 없어 ' +
     '장면에서 장면으로 건너뜁니다.</div>';
 
+  // 라운드 이동 — 라운드 탭과 같은 data-rgo 를 써서 핸들러를 공유한다
+  var ri = Math.min(Math.max(0, detail.round | 0), rep.rounds.length - 1);
+  var rnav = '<div class="rpround">' +
+    '<button class="btn" data-rgo="' + (ri - 1) + '"' + (ri === 0 ? ' disabled' : '') +
+    '>← 이전 라운드</button>' +
+    '<b>Round ' + round.n + '</b>' +
+    '<span class="tdim">/ ' + rep.rounds.length + ' · ' + h(rep.map) + '</span>' +
+    '<button class="btn" data-rgo="' + (ri + 1) + '"' +
+    (ri >= rep.rounds.length - 1 ? ' disabled' : '') + '>다음 라운드 →</button>' +
+    '</div>' +
+    '<div class="rpjump">' + rep.rounds.map(function (x, i) {
+      return '<button class="rgo' + (i === ri ? ' on' : '') + '" data-rgo="' + i +
+        '" title="Round ' + x.n + '">' + x.n + '</button>';
+    }).join('') + '</div>';
+
   return warn + credit +
     '<div class="card rpcard">' +
-    '<div class="rptop"><b>Round ' + round.n + '</b>' +
-    '<span class="tdim"> / ' + rep.rounds.length + ' · ' + h(rep.map) + '</span></div>' +
+    rnav +
     '<div class="rpbody"><div class="rpmap">' + minimapSVG(rep, cal, round, t) + '</div>' +
     feedHTML(rep, round, t) + '</div>' + ctrl + '</div>';
 }

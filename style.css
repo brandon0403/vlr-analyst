@@ -625,3 +625,28 @@ code { font-size: 0.92em; background: var(--bg-3); padding: 1px 6px; border-radi
   color: var(--fg-faint);
 }
 .rpnote b { color: var(--fg-dim); }
+
+/* 리플레이 — 라운드 이동 */
+.rpround {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px; font-size: 17px;
+}
+.rpround .btn { font-size: 13px; padding: 6px 12px; }
+.rpround .btn:disabled { opacity: .35; cursor: default; }
+.rpround .tdim { font-size: 14px; }
+/* 마지막 버튼(다음 라운드)만 오른쪽 끝으로 */
+.rpround .tdim + .btn { margin-left: auto; }
+.rpjump {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-bottom: 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.rpjump .rgo {
+  min-width: 26px; padding: 3px 6px;
+  background: var(--bg-3); border: 1px solid var(--line); color: var(--fg-faint);
+  border-radius: 5px; font: inherit; font-size: 12px;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.rpjump .rgo:hover { color: var(--fg); }
+.rpjump .rgo.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.rpjump .rgo:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
