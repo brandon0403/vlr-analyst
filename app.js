@@ -546,8 +546,19 @@ var play = { on: false, t: 0, speed: 1, raf: null, last: 0 };
  * (13개 맵 콜아웃 300개를 전수 대입해 이 조합만 전부 0~1 안에 들어옴을 확인)
  */
 function toMinimap(cal, x, y) {
-  return [y * cal.xMultiplier + cal.xScalarToAdd,
-          x * cal.yMultiplier + cal.yScalarToAdd];
+  var u = y * cal.xMultiplier + cal.xScalarToAdd;
+  var v = x * cal.yMultiplier + cal.yScalarToAdd;
+  // valorant-api 의 맵 이미지는 게임 내 레이더와 90° 어긋나 있다. 시계방향으로
+  // 돌려 rib.gg·게임과 같은 방향으로 맞춘다 (Ascent A 우측, Haven A 우측·C 좌측).
+  // 이미지도 SVG 에서 같은 각도로 돌리므로 좌표와 그림이 함께 움직인다.
+  return [1 - v, u];
+}
+
+/** 요원 초상화 파일명. 없으면 null. */
+function agentFile(name) {
+  if (!name) return null;
+  var f = String(name).toLowerCase().replace(/[^a-z0-9]/g, '') + '.png';
+  return AGENT_ASSETS[f] ? 'assets/agents/' + f : null;
 }
 
 function replayKey(m) {
@@ -584,35 +595,49 @@ function posAt(round, t) {
 function minimapSVG(rep, cal, round, t) {
   var st = posAt(round, t);
   var img = 'assets/maps/' + (cal.img || '');
-  var dots = '';
+  var R = 3.1;            // 초상화 반지름 (viewBox 100 기준)
+  var cones = '', marks = '', defs = '';
   if (st) {
     rep.players.forEach(function (p, i) {
       var L = st.loc[i];
       if (!L) return;
       var mp = toMinimap(cal, L[0], L[1]);
-      var clamp = function (v) { return Math.max(1.5, Math.min(98.5, v * 100)); };
+      var clamp = function (v) { return Math.max(R + .5, Math.min(100 - R - .5, v * 100)); };
       var cx = clamp(mp[0]).toFixed(2), cy = clamp(mp[1]).toFixed(2);
       var isDead = st.dead[i] != null;
       var cls = 'pd t' + p.team + (isDead ? ' dead' : '');
-      // 시선 방향 부채꼴
-      var cone = '';
+      // 시선 방향 부채꼴. 좌표를 90° 돌렸으므로 각도도 같이 돌린다.
       if (!isDead && L[2] != null) {
-        var a = L[2], w = 0.5, r = 4.2;
+        var a = L[2] + Math.PI / 2, w = 0.45, r = R + 3.4;
         var p1 = [(+cx) + Math.cos(a - w) * r, (+cy) + Math.sin(a - w) * r];
         var p2 = [(+cx) + Math.cos(a + w) * r, (+cy) + Math.sin(a + w) * r];
-        cone = '<path class="pcone t' + p.team + '" d="M' + cx + ' ' + cy +
+        cones += '<path class="pcone t' + p.team + '" d="M' + cx + ' ' + cy +
           ' L' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2) +
           ' L' + p2[0].toFixed(2) + ' ' + p2[1].toFixed(2) + ' Z"/>';
       }
-      dots += cone + '<g class="' + cls + '">' +
-        '<circle cx="' + cx + '" cy="' + cy + '" r="1.9"/>' +
-        '<text x="' + cx + '" y="' + ((+cy) + 3.6).toFixed(2) + '">' +
-        h(p.name || '') + '</text></g>';
+      // 이름 대신 요원 초상화. 겹쳐도 누군지 알아볼 수 있고 글자가 서로를 가리지 않는다.
+      var face = agentFile(p.agent);
+      var id = 'ac' + i;
+      var body;
+      if (face) {
+        defs += '<clipPath id="' + id + '"><circle cx="' + cx + '" cy="' + cy +
+          '" r="' + R + '"/></clipPath>';
+        body = '<image href="' + h(face) + '" x="' + ((+cx) - R).toFixed(2) +
+          '" y="' + ((+cy) - R).toFixed(2) + '" width="' + (R * 2) + '" height="' + (R * 2) +
+          '" clip-path="url(#' + id + ')" preserveAspectRatio="xMidYMid slice"/>';
+      } else {
+        body = '<circle class="nof" cx="' + cx + '" cy="' + cy + '" r="' + (R * 0.6) + '"/>';
+      }
+      marks += '<g class="' + cls + '"><title>' + h(p.name || '') +
+        (p.agent ? ' · ' + h(p.agent) : '') + '</title>' +
+        body + '<circle class="ring" cx="' + cx + '" cy="' + cy + '" r="' + R + '"/></g>';
     });
   }
   return '<svg class="mmap" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">' +
-    '<image href="' + h(img) + '" x="0" y="0" width="100" height="100"/>' +
-    dots + '</svg>';
+    '<defs>' + defs + '</defs>' +
+    '<image href="' + h(img) + '" x="0" y="0" width="100" height="100" ' +
+    'transform="rotate(90 50 50)"/>' +
+    cones + marks + '</svg>';
 }
 
 function feedHTML(rep, round, t) {
