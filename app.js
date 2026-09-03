@@ -554,32 +554,31 @@ function replayKey(m) {
   return m.id + '-' + (m.maps[detail.tab] || {}).game_id;
 }
 
-/** 해당 시각에서 각 선수의 좌표를 앞뒤 스냅샷으로 보간한다.
- *  원본이 킬 시점 스냅샷이라 그 사이는 직선 이동으로 채운다. */
+/** 좌표가 있는 이벤트(=관측 시점)만 모은다. 원본이 이 순간들만 알고 있다. */
+function frames(round) {
+  return (round.events || []).filter(function (e) { return e.loc; });
+}
+
+/** 관측 시점 t 에서의 상태.
+ *
+ *  보간하지 않는다. rib.gg 원본은 킬·설치·해체가 일어난 순간에만 좌표를 남기고
+ *  그 사이에 선수가 어디로 어떻게 갔는지는 아무 데도 없다. 예전에는 두 시점을
+ *  직선으로 이어 붙였는데, 없는 움직임을 지어내는 바람에 이동이 실제보다 느리고
+ *  시선도 엉뚱한 곳을 향했다. 지금은 마지막 관측값을 그대로 유지한다.
+ */
 function posAt(round, t) {
-  var snaps = (round.events || []).filter(function (e) { return e.loc; });
-  if (!snaps.length) return null;
-  var prev = null, next = null;
-  for (var i = 0; i < snaps.length; i++) {
-    if (snaps[i].t <= t) prev = snaps[i];
-    if (snaps[i].t > t) { next = snaps[i]; break; }
+  var fs = frames(round);
+  if (!fs.length) return null;
+  var cur = fs[0];
+  for (var i = 0; i < fs.length; i++) {
+    if (fs[i].t <= t) cur = fs[i];
+    else break;
   }
-  if (!prev) return { loc: snaps[0].loc, dead: {} };
-  if (!next) next = prev;
-  var span = next.t - prev.t;
-  var f = span > 0 ? Math.max(0, Math.min(1, (t - prev.t) / span)) : 0;
-  // 좌표를 모르는 선수(null)는 그리지 않는다 — 외부 데이터는 킬 순간의 생존자만 담긴다
-  var loc = prev.loc.map(function (a, i) {
-    if (!a) return null;
-    var b = next.loc[i] || a;
-    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2]];
-  });
-  // 이 시점까지 죽은 선수
   var dead = {};
   (round.events || []).forEach(function (e) {
     if (e.type === 'kill' && e.t <= t) dead[e.victim] = e.t;
   });
-  return { loc: loc, dead: dead };
+  return { loc: cur.loc, dead: dead, at: cur.t, stale: t > cur.t };
 }
 
 function minimapSVG(rep, cal, round, t) {
@@ -674,15 +673,23 @@ function replayHTML(m) {
 
   var secs = Math.floor(t / 1000);
   var clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+  var fs = frames(round);
+  var fi = frameIndex(round, t);
 
   var ctrl = '<div class="rpctrl">' +
+    '<button class="pbtn" id="pprev" title="이전 장면">◀◀</button>' +
     '<button class="pbtn" id="pplay">' + (play.on ? '❚❚' : '▶') + '</button>' +
+    '<button class="pbtn" id="pnext" title="다음 장면">▶▶</button>' +
     '<input type="range" id="pseek" min="0" max="' + dur + '" value="' + t + '">' +
     '<span class="clock">' + clock + '</span>' +
+    '<span class="fidx tdim">장면 ' + (fi + 1) + '/' + fs.length + '</span>' +
     [0.5, 1, 2, 4].map(function (s) {
       return '<button class="sbtn' + (play.speed === s ? ' on' : '') +
         '" data-sp="' + s + '">' + s + '×</button>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' +
+    '<div class="rpnote tdim">좌표는 킬·설치·해체가 일어난 <b>' + fs.length +
+    '개 순간</b>에만 기록돼 있습니다. 그 사이 이동 경로는 원본에 없어 ' +
+    '장면에서 장면으로 건너뜁니다.</div>';
 
   return warn + credit +
     '<div class="card rpcard">' +
@@ -692,28 +699,59 @@ function replayHTML(m) {
     feedHTML(rep, round, t) + '</div>' + ctrl + '</div>';
 }
 
-/** 재생 루프 */
+/** 지금 시각이 몇 번째 장면인지 (좌표가 있는 이벤트 기준) */
+function frameIndex(round, t) {
+  var fs = frames(round);
+  var idx = 0;
+  for (var i = 0; i < fs.length; i++) {
+    if (fs[i].t <= t) idx = i;
+    else break;
+  }
+  return idx;
+}
+
+/** 한 장면에 머무는 시간 (1× 기준). 원본에 중간 경로가 없으니 실시간 재생은 뜻이 없다. */
+var DWELL_MS = 1100;
+
+/** 장면 이동. dir 이 +1 이면 다음, -1 이면 이전. */
+function stepFrame(m, dir) {
+  var rep = RCACHE[replayKey(m)];
+  if (!rep) return false;
+  var round = rep.rounds[Math.min(detail.round | 0, rep.rounds.length - 1)];
+  var fs = frames(round);
+  if (!fs.length) return false;
+  var i = frameIndex(round, play.t);
+  // 첫 장면 이전(라운드 시작)에 있으면 다음은 첫 장면이다
+  if (dir > 0 && play.t < fs[0].t) { play.t = fs[0].t; paintReplay(m); return true; }
+  var j = i + dir;
+  if (j < 0 || j >= fs.length) return false;
+  play.t = fs[j].t;
+  paintReplay(m);
+  return true;
+}
+
+/** 재생 루프 — 장면에서 장면으로 건너뛴다 */
 function stopPlay() {
   play.on = false;
-  if (play.raf) { clearInterval(play.raf); play.raf = null; }
+  if (play.raf) { clearTimeout(play.raf); play.raf = null; }
 }
 
 function startPlay(m) {
   var rep = RCACHE[replayKey(m)];
   if (!rep) return;
   var round = rep.rounds[Math.min(detail.round | 0, rep.rounds.length - 1)];
-  var dur = round.duration || 1;
+  if (!frames(round).length) return;
   play.on = true;
-  play.last = performance.now();
-  // rAF 는 창이 화면에 그려지지 않으면 멈춰서 타이머를 쓴다 (약 30fps)
-  play.raf = setInterval(function () {
+  var tick = function () {
     if (!play.on) return;
-    var now = performance.now();
-    play.t += (now - play.last) * play.speed;
-    play.last = now;
-    if (play.t >= dur) { play.t = dur; stopPlay(); }
-    paintReplay(m);
-  }, 33);
+    if (!stepFrame(m, 1)) { stopPlay(); paintReplay(m); return; }
+    play.raf = setTimeout(tick, DWELL_MS / (play.speed || 1));
+  };
+  // 마지막 장면에 서 있으면 처음부터 다시
+  var fs = frames(round);
+  if (play.t >= fs[fs.length - 1].t) play.t = 0;
+  paintReplay(m);
+  play.raf = setTimeout(tick, DWELL_MS / (play.speed || 1));
 }
 
 /** 재생 중에는 전체를 다시 그리지 않고 점과 피드만 갱신한다 */
@@ -738,6 +776,10 @@ function paintReplay(m) {
   if (clock) {
     var s = Math.floor(t / 1000);
     clock.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  var fidx = document.querySelector('.rpctrl .fidx');
+  if (fidx) {
+    fidx.textContent = '장면 ' + (frameIndex(round, t) + 1) + '/' + frames(round).length;
   }
   var pb = document.getElementById('pplay');
   if (pb) pb.textContent = play.on ? '❚❚' : '▶';
@@ -1050,6 +1092,10 @@ function renderMatchBody(m) {
       }
     };
   }
+  var prevb = document.getElementById('pprev');
+  if (prevb) prevb.onclick = function () { stopPlay(); stepFrame(m, -1); paintReplay(m); };
+  var nextb = document.getElementById('pnext');
+  if (nextb) nextb.onclick = function () { stopPlay(); stepFrame(m, 1); paintReplay(m); };
   var seek = document.getElementById('pseek');
   if (seek) {
     seek.oninput = function () { stopPlay(); play.t = +seek.value; paintReplay(m); };

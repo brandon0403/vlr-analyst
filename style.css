@@ -615,3 +615,11 @@ code { font-size: 0.92em; background: var(--bg-3); padding: 1px 6px; border-radi
 .livebox .ok { color: #4ec9a0; font-weight: 700; }
 .livebox .bad { color: var(--accent); font-weight: 700; }
 .livebox a { color: var(--fg); }
+
+/* 리플레이 — 장면 표시와 안내 */
+.rpctrl .fidx { font-size: 12.5px; white-space: nowrap; }
+.rpnote {
+  margin-top: 8px; font-size: 12.5px; line-height: 1.6;
+  color: var(--fg-faint);
+}
+.rpnote b { color: var(--fg-dim); }
