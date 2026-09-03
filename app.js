@@ -1754,10 +1754,116 @@ function viewStats() {
 /* 데이터 안내                                                         */
 /* ------------------------------------------------------------------ */
 
+/* ---- 서버 제어 (로컬 실행일 때만) ---------------------------------- */
+
+var LIVE = { on: false, timer: null, logFrom: 0 };
+
+function liveStop() {
+  if (LIVE.timer) { clearInterval(LIVE.timer); LIVE.timer = null; }
+}
+
+/** 서버가 붙어 있으면 상태 카드를 채우고, 아니면 조용히 사라진다. */
+function liveInit() {
+  var box = document.getElementById('livebox');
+  if (!box) return;
+  fetch('_api/status')
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (s) { LIVE.on = true; liveRender(s); liveWire(); })
+    .catch(function () { box.remove(); });
+}
+
+function liveRender(s) {
+  var box = document.getElementById('livebox');
+  if (!box) return;
+  var b = s.build, d = s.data;
+  var built = d.meta && d.meta.built_at ? d.meta.built_at : '-';
+  var running = b.running;
+
+  var rawLine = d.raw_ok
+    ? '<span class="ok">연결됨</span> <code>' + h(d.raw || '') + '</code>'
+    : '<span class="bad">찾을 수 없음</span> <code>' + h(d.raw || '-') + '</code>';
+
+  box.innerHTML =
+    '<div class="livehead"><b>서버에 연결됨</b>' +
+    '<span class="tdim">서버를 끄지 않고 여기서 갱신할 수 있습니다.</span></div>' +
+    '<div class="liverows">' +
+    '<div><span class="k">원본</span>' + rawLine + '</div>' +
+    '<div><span class="k">마지막 빌드</span>' + h(built) + '</div>' +
+    '<div><span class="k">파일</span>경기 상세 ' + (d.match_files || 0).toLocaleString() +
+    '개 · 리플레이 ' + (d.replays || 0).toLocaleString() + '개</div>' +
+    '</div>' +
+    '<div class="liveact">' +
+    '<button id="livebuild"' + (running || !d.raw_ok ? ' disabled' : '') + '>' +
+    (running ? '갱신하는 중…' : '지금 갱신') + '</button>' +
+    (running ? '' : '<button id="livereload" class="ghost">화면 새로고침</button>') +
+    '<span class="tdim" id="livemsg">' +
+    (running ? '' : (d.raw_ok ? '스냅샷이 바뀐 경기만 다시 파싱합니다.'
+                              : '원본 폴더에 연결되지 않아 갱신할 수 없습니다.')) +
+    '</span></div>' +
+    '<pre id="livelog" class="livelog"' + (running ? '' : ' hidden') + '></pre>';
+  liveWire();
+}
+
+function liveWire() {
+  var b = document.getElementById('livebuild');
+  if (b) b.onclick = liveBuild;
+  var r = document.getElementById('livereload');
+  if (r) r.onclick = function () { location.reload(); };
+}
+
+function liveBuild() {
+  var btn = document.getElementById('livebuild');
+  var log = document.getElementById('livelog');
+  var msg = document.getElementById('livemsg');
+  if (btn) { btn.disabled = true; btn.textContent = '갱신하는 중…'; }
+  if (log) { log.hidden = false; log.textContent = ''; }
+  LIVE.logFrom = 0;
+  fetch('_api/build', { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (x) {
+      if (msg) msg.textContent = x.message || '';
+      liveStop();
+      LIVE.timer = setInterval(livePoll, 1000);
+    })
+    .catch(function () { if (msg) msg.textContent = '서버에 연결하지 못했습니다.'; });
+}
+
+function livePoll() {
+  fetch('_api/log?from=' + LIVE.logFrom)
+    .then(function (r) { return r.json(); })
+    .then(function (x) {
+      var log = document.getElementById('livelog');
+      if (!log) { liveStop(); return; }
+      LIVE.logFrom = x.next;
+      if (x.lines.length) {
+        log.textContent += x.lines.join('\n') + '\n';
+        log.scrollTop = log.scrollHeight;
+      }
+      if (!x.build.running) {
+        liveStop();
+        var ok = x.build.code === 0;
+        var msg = document.getElementById('livemsg');
+        var btn = document.getElementById('livebuild');
+        if (btn) { btn.disabled = false; btn.textContent = '지금 갱신'; }
+        if (msg) {
+          msg.innerHTML = ok
+            ? '<span class="ok">갱신 완료</span> — 새로고침하면 반영됩니다. ' +
+              '<a href="#" id="liveafter">지금 새로고침</a>'
+            : '<span class="bad">빌드 실패</span> — 위 로그를 확인하세요.';
+          var a = document.getElementById('liveafter');
+          if (a) a.onclick = function (e) { e.preventDefault(); location.reload(); };
+        }
+      }
+    })
+    .catch(function () { liveStop(); });
+}
+
 function viewAbout() {
+  liveStop();
   var m = DB.meta;
   var from = parseTs(m.range[0]), to = parseTs(m.range[1]);
   app.innerHTML = '<h1>데이터</h1>' +
+    '<div class="card livebox" id="livebox"><div class="tdim">서버 상태 확인 중…</div></div>' +
     '<div class="sub">raw/ 폴더의 VLR.gg HTML 스냅샷을 파싱해 만든 정적 아카이브입니다.</div>' +
     '<div class="statgrid">' +
     [['경기', m.matches], ['상세 스탯', m.detail], ['이벤트', m.events],
@@ -1806,6 +1912,7 @@ function viewAbout() {
     '<div>· 이벤트와 팀은 이름 기준으로 묶습니다. 목록 페이지에는 ID 가 없어, ' +
     '같은 팀이 이름을 바꾸면 다른 팀으로 잡힙니다.</div>' +
     '</div>';
+  liveInit();
 }
 
 /* ------------------------------------------------------------------ */

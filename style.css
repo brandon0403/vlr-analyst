@@ -565,3 +565,45 @@ code { font-size: 0.92em; background: var(--bg-3); padding: 1px 6px; border-radi
   .vs .side, .vs .side.r { flex-direction: column; }
   .wrap { padding: 22px 16px 80px; }
 }
+
+/* ---------- 데이터 탭: 서버 제어 ---------- */
+.livebox {
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  display: flex; flex-direction: column; gap: 12px;
+  border-left: 3px solid var(--accent);
+}
+.livehead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.livehead b { font-size: 15px; }
+.liverows { display: flex; flex-direction: column; gap: 5px; font-size: 14px; }
+.liverows .k {
+  display: inline-block; min-width: 92px;
+  color: var(--fg-faint); font-size: 12px;
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.liverows code {
+  background: var(--bg-3); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 6px; font-size: 12.5px;
+}
+.liveact { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.liveact button {
+  background: var(--accent); color: #fff; border: 0;
+  border-radius: 8px; padding: 9px 16px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.liveact button:hover:not(:disabled) { filter: brightness(1.1); }
+.liveact button:disabled { opacity: 0.5; cursor: default; }
+.liveact button.ghost {
+  background: var(--bg-3); color: var(--fg-dim);
+  border: 1px solid var(--line); font-weight: 500;
+}
+.liveact button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.livelog {
+  margin: 0; max-height: 300px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; font-size: 12.5px; line-height: 1.6;
+  color: var(--fg-dim); white-space: pre-wrap; word-break: break-all;
+}
+.livebox .ok { color: #4ec9a0; font-weight: 700; }
+.livebox .bad { color: var(--accent); font-weight: 700; }
+.livebox a { color: var(--fg); }
