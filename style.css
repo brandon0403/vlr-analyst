@@ -236,7 +236,7 @@ select { max-width: 330px; }
 /* 맵 그림만 흐리게. 선수 초상화는 또렷해야 한다 */
 .mmap > image { opacity: .55; }
 /* 요원 초상화 + 팀 색 테두리. 이름을 빼서 서로 가리지 않는다 */
-.mmap .pd .ring { fill: none; stroke-width: .85; }
+.mmap .pd .ring { fill: none; stroke-width: .42; }
 .mmap .pd.t0 .ring { stroke: var(--win); }
 .mmap .pd.t1 .ring { stroke: var(--lose); }
 .mmap .pd .nof { stroke: #0a0c0f; stroke-width: .5; }

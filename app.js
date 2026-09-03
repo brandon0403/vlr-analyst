@@ -595,7 +595,7 @@ function posAt(round, t) {
 function minimapSVG(rep, cal, round, t) {
   var st = posAt(round, t);
   var img = 'assets/maps/' + (cal.img || '');
-  var R = 3.1;            // 초상화 반지름 (viewBox 100 기준)
+  var R = 2.2;            // 초상화 반지름 (viewBox 100 기준)
   var cones = '', marks = '', defs = '';
   if (st) {
     rep.players.forEach(function (p, i) {
@@ -608,7 +608,7 @@ function minimapSVG(rep, cal, round, t) {
       var cls = 'pd t' + p.team + (isDead ? ' dead' : '');
       // 시선 방향 부채꼴. 좌표를 90° 돌렸으므로 각도도 같이 돌린다.
       if (!isDead && L[2] != null) {
-        var a = L[2] + Math.PI / 2, w = 0.45, r = R + 3.4;
+        var a = L[2] + Math.PI / 2, w = 0.45, r = R + 3.0;
         var p1 = [(+cx) + Math.cos(a - w) * r, (+cy) + Math.sin(a - w) * r];
         var p2 = [(+cx) + Math.cos(a + w) * r, (+cy) + Math.sin(a + w) * r];
         cones += '<path class="pcone t' + p.team + '" d="M' + cx + ' ' + cy +
