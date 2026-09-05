@@ -261,7 +261,15 @@ function viewMatches(_, params) {
     return '<option value="' + h(e.name) + '"' + (e.name === listState.ev ? ' selected' : '') + '>' +
       h(e.name) + ' (' + e.count + ')</option>';
   }).join('');
-  var teamOpts = DB.teams.slice(0, 600).map(function (t) {
+  // teams 는 5,530개(경기수 내림차순)라 600개로 자른다. 그런데 팀 탭에서
+  // 클릭해 들어오면 잘린 쪽 팀도 필터로 걸릴 수 있고, 그러면 드롭다운은
+  // '모든 팀'을 보여주면서 해제도 안 된다. 걸린 팀은 항상 옵션에 넣는다.
+  var teamList = DB.teams.slice(0, 600);
+  if (listState.team && !teamList.some(function (t) { return t.name === listState.team; })) {
+    var exact = DB.teams.filter(function (t) { return t.name === listState.team; })[0];
+    teamList = [exact || { name: listState.team, matches: 0 }].concat(teamList);
+  }
+  var teamOpts = teamList.map(function (t) {
     return '<option value="' + h(t.name) + '"' + (t.name === listState.team ? ' selected' : '') + '>' +
       h(t.name) + ' (' + t.matches + ')</option>';
   }).join('');
@@ -1642,6 +1650,13 @@ function renderPlayers() {
 }
 
 function viewPlayers() {
+  if (!PLAYERS) {
+    app.innerHTML = '<div class="spinner">선수 데이터 불러오는 중…</div>';
+    needPlayers().then(viewPlayers).catch(function () {
+      app.innerHTML = '<div class="card"><div class="empty">선수 데이터를 불러오지 못했습니다.</div></div>';
+    });
+    return;
+  }
   app.innerHTML = '<h1>선수</h1>' +
     '<div class="sub">All Maps 스코어보드 기준 누적 · 정렬 조건 상위 300명 표시 · ' +
     'Rating 2.0 / KAST 는 최신 대회에만 기록됨 · ' +
@@ -1665,6 +1680,17 @@ function viewPlayers() {
 /* ------------------------------------------------------------------ */
 
 var PCACHE = {};
+var PLAYERS_REQ = null;
+
+/** players.json 을 처음 필요할 때 한 번만 받는다. renderPlayers 는 널 가드가 없으므로
+    반드시 이 게이트 뒤에서만 부를 것. */
+function needPlayers() {
+  if (PLAYERS) return Promise.resolve(PLAYERS);
+  if (!PLAYERS_REQ) {
+    PLAYERS_REQ = getJSON('data/players.json').then(function (x) { PLAYERS = x; return x; });
+  }
+  return PLAYERS_REQ;
+}
 
 /** 선수 상세의 경기 기록 표 컬럼 */
 var PM_COLS = [
@@ -1688,26 +1714,42 @@ function statCard(label, value, sub) {
 
 function viewPlayer(match) {
   var pid = +match[1];
-  var p = (PLAYERS || []).filter(function (x) { return x.id === pid; })[0];
   app.innerHTML = '<div class="spinner">선수 기록 불러오는 중…</div>';
+  // PLAYERS 가 아직 없으면 이름·국적·커리어 통계가 통째로 빈 화면이 된다.
+  if (!PLAYERS) {
+    needPlayers().then(function () { viewPlayer(match); }).catch(function () { viewPlayer(match); });
+    return;
+  }
+  var p = (PLAYERS || []).filter(function (x) { return x.id === pid; })[0];
 
   var got = PCACHE[pid] ? Promise.resolve(PCACHE[pid]) : getJSON('data/players/' + pid + '.json');
   got.then(function (data) {
     PCACHE[pid] = data;
     renderPlayer(pid, p, data.matches || []);
   }).catch(function () {
-    app.innerHTML = '<div style="margin-bottom:14px"><a href="#/players" class="btn">← 선수 목록</a></div>' +
-      '<div class="card"><div class="empty">이 선수의 경기 기록이 없습니다.</div></div>';
+    // 상세를 못 받아도 이름·국적·Rating·ACS 는 이미 PLAYERS 에 있다.
+    // 화면을 지워 버리면 가진 정보까지 같이 버리는 셈이다.
+    renderPlayer(pid, p, []);
   });
 }
 
 function renderPlayer(pid, p, rows) {
-  var name = p ? p.name : (rows[0] ? '선수 #' + pid : '선수 #' + pid);
-  var wins = 0, losses = 0;
-  rows.forEach(function (r) {
-    if (r[PM_WON] === 1) wins++;
-    else if (r[PM_WON] === 0) losses++;
-  });
+  var name = p ? p.name : '선수 #' + pid;
+  // 공개 배포에는 최근 N경기의 상세만 담기므로 rows 는 커리어의 일부다.
+  // 카드의 경기수·승패는 players.json 의 커리어 값을 쓰고(목록과 같은 숫자),
+  // 표 제목만 실제로 담긴 행 수를 말한다.
+  var wins, losses, total;
+  if (p && p.wins != null) {
+    wins = p.wins; losses = p.losses;
+    total = (p.matches != null) ? p.matches : rows.length;
+  } else {
+    wins = 0; losses = 0;
+    rows.forEach(function (r) {
+      if (r[PM_WON] === 1) wins++;
+      else if (r[PM_WON] === 0) losses++;
+    });
+    total = rows.length;
+  }
   var wr = (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null;
 
   var head =
@@ -1724,7 +1766,7 @@ function renderPlayer(pid, p, rows) {
     '</div></div></div></div></div></div>';
 
   var cards = '<div class="statgrid" style="margin-top:18px">' +
-    statCard('경기', rows.length.toLocaleString()) +
+    statCard('경기', total.toLocaleString()) +
     statCard('승 · 패', wins + ' · ' + losses, wr == null ? '' : wr + '%') +
     (p && p.rating != null ? statCard('Rating 2.0', p.rating.toFixed(2), p.rating_n + '경기 기준') : '') +
     (p && p.acs != null ? statCard('ACS', Math.round(p.acs)) : '') +
@@ -1740,9 +1782,20 @@ function renderPlayer(pid, p, rows) {
       }).join('') + '</div></div>'
     : '';
 
-  var tbl = '<h2>경기 기록 <span class="chip">' + rows.length.toLocaleString() + '경기</span></h2>';
+  var partial = DB.meta.demo && rows.length < total;
+  var tbl = '<h2>경기 기록 <span class="chip">' +
+    (partial ? '표시된 ' : '') + rows.length.toLocaleString() + '경기</span></h2>';
+  if (partial) {
+    tbl += '<div class="sub">공개본에는 최근 ' +
+      DB.meta.demo.detail_included.toLocaleString() + '경기의 상세만 담겨 있어 ' +
+      '개별 경기 기록은 일부만 나옵니다 (전체 ' +
+      DB.meta.demo.detail_total.toLocaleString() + '경기). 위 통계는 커리어 전체 기준입니다.</div>';
+  }
   if (!rows.length) {
-    tbl += '<div class="card"><div class="empty">스코어보드가 있는 경기가 없습니다.</div></div>';
+    tbl += '<div class="card"><div class="empty">' +
+      (DB.meta.demo ? '이 선수의 경기는 공개본에 담긴 최근 ' +
+        DB.meta.demo.detail_included.toLocaleString() + '경기 밖에 있습니다.'
+        : '스코어보드가 있는 경기가 없습니다.') + '</div></div>';
   } else {
     var th = '<tr><th class="l">날짜</th><th class="l">대회</th><th class="l">팀</th>' +
       '<th class="l">상대</th><th>결과</th><th class="l">요원</th>' +
@@ -2021,9 +2074,12 @@ var assetsReady = getJSON('assets/agents/manifest.json')
   .then(function (list) { (list || []).forEach(function (f) { AGENT_ASSETS[f] = 1; }); })
   .catch(function () { });
 
-Promise.all([getJSON('data/index.json'), getJSON('data/players.json'), assetsReady])
+// players.json 은 첫 화면(#/matches)·이벤트·팀·경기상세 어디서도 안 쓴다.
+// 여기서 같이 기다리면 선수 화면에 들어가지도 않은 사람까지 1MB 를 더 받고 나서야
+// 첫 렌더가 시작된다. 선수 화면에서만 받도록 needPlayers() 로 뺐다.
+Promise.all([getJSON('data/index.json'), assetsReady])
   .then(function (r) {
-    DB = r[0]; PLAYERS = r[1];
+    DB = r[0];
     DB.events.forEach(function (e) { if (e.logo) EV_LOGO[e.name] = e.logo; });
     DB.teams.forEach(function (t) { if (t.logo) TEAM_LOGO[t.name] = t.logo; });
     DB.byId = {};
