@@ -157,6 +157,8 @@ select { max-width: 330px; }
 .tbl th.sortable:hover { color: var(--fg); }
 .tbl th.sorted { color: var(--accent); }
 .tbl td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+/* 흐린 보조 글자. 표 칸 밖(span·div)에도 붙으므로 색은 일반 규칙으로 */
+.tdim { color: var(--fg-faint); }
 .tbl td.tdim { color: var(--fg-faint); font-size: 13px; }
 .tbl td.nowrap { white-space: nowrap; }
 .tbl tbody tr:hover { background: var(--bg-3); }
@@ -224,7 +226,6 @@ select { max-width: 330px; }
   font-size: 13px; margin-bottom: 14px; line-height: 1.6;
 }
 .rpcard { padding: 16px 18px 14px; }
-.rptop { font-size: 17px; margin-bottom: 12px; }
 .rpbody { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .rpmap {
   background: #0a0c0f; border: 1px solid var(--line); border-radius: 10px;
@@ -286,13 +287,14 @@ select { max-width: 330px; }
 }
 .sbtn.on { color: var(--fg); border-color: var(--fg-faint); }
 
+/* 좁은 화면에서는 미니맵과 이벤트를 나란히 두면 둘 다 못 쓸 만큼 좁아진다 */
 @media (max-width: 860px) {
-  .rpbody { grid-template-columns: 1fr; }
+  .rpbody { grid-template-columns: minmax(0, 1fr); }
   .feed { max-height: 260px; }
 }
 
 /* ---------- 라운드 점수차 흐름 그래프 ---------- */
-.flowcard { padding: 16px 20px 8px; }
+.flowcard { padding: 16px 20px 8px; position: relative; }
 .flowhead {
   display: flex; align-items: center; font-size: 12px;
   color: var(--fg-faint); margin-bottom: 6px;
@@ -303,7 +305,6 @@ select { max-width: 330px; }
   position: absolute; left: 50%; transform: translateX(-50%);
   text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
 }
-.flowcard { position: relative; }
 .flow { display: block; width: 100%; height: 150px; }
 .flow .fzero { stroke: var(--line); stroke-width: 1; }
 .flow .fdiv { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
@@ -386,12 +387,6 @@ select { max-width: 330px; }
 @media (max-width: 700px) {
   .rmoney { grid-template-columns: 1fr; }
   .rhead .rsc { margin-left: 0; }
-}
-
-/* 좁은 화면에서는 미니맵과 이벤트를 나란히 두면 둘 다 못 쓸 만큼 좁아진다 */
-@media (max-width: 820px) {
-  .rpbody { grid-template-columns: minmax(0, 1fr); }
-  .feed { max-height: 260px; }
 }
 
 /* 경기 영상 링크 */
@@ -484,6 +479,8 @@ select { max-width: 330px; }
   font-size: 13px; white-space: normal;
 }
 .pop:hover .pop-box, .pop:focus-within .pop-box { display: block; }
+/* 표 카드(overflow)가 아래로 넘친 말풍선을 자른다. 아래쪽 다섯 행은 위로 연다 */
+.tbl tbody tr:nth-last-child(-n+5) .pop-box { top: auto; bottom: calc(100% + 8px); }
 .pop-head {
   display: block; font-size: 11px; font-weight: 700; color: var(--fg-faint);
   text-transform: uppercase; letter-spacing: 0.04em;
@@ -588,6 +585,16 @@ code { font-size: 0.92em; background: var(--bg-3); padding: 1px 6px; border-radi
   .vs { grid-template-columns: 1fr; gap: 14px; text-align: center; }
   .vs .side, .vs .side.r { flex-direction: column; }
   .wrap { padding: 22px 16px 80px; }
+  /* 맵 헤더: 1fr auto 1fr 그대로면 가운데(맵명·VOD)가 폭을 다 차지해 양쪽 팀·점수가
+     0폭으로 눌려 겹친다. 맵명 줄을 위로 올리고 두 팀을 반씩 나눈다 */
+  .maphead { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 16px; }
+  .maphead .mid { grid-column: 1 / -1; order: -1; }
+  .maphead .mt { gap: 8px; }
+  .maphead .mt img { width: 28px; height: 28px; }
+  /* 팀명 칸이 min-width:auto 면 가장 긴 단어보다 못 줄어 점수가 옆 칸으로 밀려 겹친다 */
+  .maphead .mt > div:not(.msc) { min-width: 0; overflow-wrap: anywhere; }
+  /* 흐름 그래프 가운데 제목은 양쪽 팀명과 같은 줄이라 좁으면 겹친다 */
+  .flowhead .mid { display: none; }
 }
 
 /* ---------- 데이터 탭: 서버 제어 ---------- */

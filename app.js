@@ -35,8 +35,6 @@ var MAP_METHOD = {
 function h(html) { return String(html == null ? '' : html)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d; }
-
 /* 국가: 윈도우 크롬은 국기 이모지를 렌더링하지 않으므로 2글자 코드로 표시 */
 function flag(code) {
   if (!code || !/^[a-z]{2}$/.test(code)) return '<span class="flag"></span>';
@@ -124,7 +122,8 @@ function route() {
     var m = ROUTES[i][0].exec(hash);
     if (m) { window.scrollTo(0, 0); ROUTES[i][1](m, new URLSearchParams(hash.split('?')[1] || '')); return; }
   }
-  location.hash = '#/matches';
+  // 히스토리를 쌓지 않는다. 쌓으면 뒤로가기가 잘못된 해시 → 다시 여기로 돌아와 빠져나갈 수 없다
+  location.replace('#/matches');
 }
 
 window.addEventListener('hashchange', route);
@@ -247,13 +246,15 @@ function renderMatchList() {
 }
 
 function viewMatches(_, params) {
-  // 이벤트/팀 카드에서 넘어온 경우: 빈 목록으로 보이지 않게 '상세만' 을 함께 해제한다
-  if (params.get('ev')) {
-    listState.ev = params.get('ev');
+  // 이벤트/팀 카드에서 넘어온 경우: 빈 목록으로 보이지 않게 '상세만' 을 함께 해제한다.
+  // 값이 바뀐 경우에만 — 경기를 열었다 뒤로가기로 같은 해시에 돌아오면 페이지를 유지한다.
+  var ev = params.get('ev'), tm = params.get('team');
+  if (ev && ev !== listState.ev) {
+    listState.ev = ev;
     listState.team = ''; listState.page = 0; listState.onlyDetail = false;
   }
-  if (params.get('team')) {
-    listState.team = params.get('team');
+  if (tm && tm !== listState.team) {
+    listState.team = tm;
     listState.ev = ''; listState.page = 0; listState.onlyDetail = false;
   }
 
@@ -313,9 +314,7 @@ function viewMatches(_, params) {
 var detail = { side: 'both', tab: 'all', view: 'overview', matrix: 'normal', round: 0 };
 
 function statCell(st, col, side) {
-  var v = (st[col] || {})[side];
-  if (v == null && side !== 'both') v = null;
-  return v;
+  return (st[col] || {})[side];
 }
 
 var SB_COLS = [
@@ -373,7 +372,6 @@ function scoreboardHTML(players, side) {
 
 function roundsHTML(g) {
   if (!g.rounds || !g.rounds.length) return '';
-  var t0 = 0, t1 = 0;
   var cells = g.rounds.map(function (r, i) {
     var out = '';
     if (i === 12 || (i > 24 && (i - 24) % 2 === 0)) out += '<div class="gap"></div>';
@@ -395,9 +393,8 @@ function halvesHTML(hv) {
   return parts.join(' · ');
 }
 
-function econHTML(econ, gameId, teams) {
-  if (!econ) return '';
-  var g = econ.filter(function (e) { return String(e.game_id) === String(gameId); })[0];
+function econHTML(econ, gameId) {
+  var g = exactGame(econ, gameId);
   if (!g) return '';
 
   var sum = '';
@@ -436,12 +433,6 @@ var MATRIX_KINDS = [
   ['fkfd', '퍼스트 킬'],
   ['op', '오퍼레이터 킬']
 ];
-
-function perfGame(perf, gameId) {
-  if (!perf) return null;
-  var g = perf.filter(function (e) { return String(e.game_id) === String(gameId); })[0];
-  return g || perf.filter(function (e) { return e.game_id === 'all'; })[0] || null;
-}
 
 function matrixHTML(m) {
   if (!m) return '<div class="empty">데이터가 없습니다.</div>';
@@ -518,7 +509,8 @@ function advHTML(g, mapName) {
 
 /** 퍼포먼스 탭 전체 (매트릭스 3종 + 멀티킬/클러치) */
 function performanceHTML(perf, gameId, kind, mapName) {
-  var g = perfGame(perf, gameId);
+  // 맵 탭에 그 맵 항목이 없을 때 'all'(여러 맵 합계)로 대신하면 그 맵 수치처럼 보인다
+  var g = exactGame(perf, gameId);
   if (!g) {
     return '<div class="card"><div class="empty">이 경기는 퍼포먼스 스냅샷이 없습니다.</div></div>';
   }
@@ -545,7 +537,7 @@ function performanceHTML(perf, gameId, kind, mapName) {
 
 var MAPCAL = null;      // 맵 이름 -> 좌표 변환값
 var RCACHE = {};        // "matchId-gameId" -> 리플레이 데이터
-var play = { on: false, t: 0, speed: 1, raf: null, last: 0 };
+var play = { on: false, t: 0, speed: 1, raf: null };
 
 /** 게임 좌표 -> 미니맵 0~1 좌표.
  *
@@ -737,7 +729,6 @@ function replayHTML(m) {
     '장면에서 장면으로 건너뜁니다.</div>';
 
   // 라운드 이동 — 라운드 탭과 같은 data-rgo 를 써서 핸들러를 공유한다
-  var ri = Math.min(Math.max(0, detail.round | 0), rep.rounds.length - 1);
   var rnav = '<div class="rpround">' +
     '<button class="btn" data-rgo="' + (ri - 1) + '"' + (ri === 0 ? ' disabled' : '') +
     '>← 이전 라운드</button>' +
@@ -1087,7 +1078,7 @@ function renderMatchBody(m) {
     tabs.push(['rounds', '라운드']);
   }
   if (gid !== 'all' && RCACHE[m.id + '-' + gid]) tabs.push(['replay', '리플레이']);
-  if (perfGame(m.performance, gid)) tabs.push(['performance', '퍼포먼스']);
+  if (exactGame(m.performance, gid)) tabs.push(['performance', '퍼포먼스']);
   if (gid !== 'all' && exactGame(m.economy, gid)) tabs.push(['economy', '이코노미']);
   if (!tabs.filter(function (t) { return t[0] === detail.view; })[0]) detail.view = 'overview';
 
@@ -1104,7 +1095,7 @@ function renderMatchBody(m) {
       performanceHTML(m.performance, gid, detail.matrix,
         detail.tab === 'all' ? null : (m.maps[detail.tab] || {}).map);
   } else if (detail.view === 'economy') {
-    body = mapHeadWrap(m) + econHTML(m.economy, gid, m.teams);
+    body = mapHeadWrap(m) + econHTML(m.economy, gid);
   } else if (detail.view === 'rounds') {
     body = mapHeadWrap(m) + roundExplorerHTML(m);
   } else if (detail.view === 'replay') {
@@ -1169,10 +1160,13 @@ function renderMatchBody(m) {
   host.querySelectorAll('.feed .fev').forEach(function (e) {
     e.onclick = function () { stopPlay(); play.t = +e.dataset.t; paintReplay(m); };
   });
-  // 선택한 라운드가 띠 밖으로 나가 있으면 보이게 스크롤
+  // 선택한 라운드가 띠 밖으로 나가 있으면 띠만 가로로 스크롤해 가운데에 둔다.
+  // scrollIntoView 는 창까지 세로로 끌어올려, 아래쪽 '다음 라운드' 버튼이 화면 밖으로 나간다.
   var sel = host.querySelector('.rstrip .rpick.on');
-  if (sel && sel.scrollIntoView) {
-    sel.scrollIntoView({ block: 'nearest', inline: 'center' });
+  if (sel) {
+    var st = sel.parentNode;
+    st.scrollLeft += sel.getBoundingClientRect().left - st.getBoundingClientRect().left -
+      (st.clientWidth - sel.offsetWidth) / 2;
   }
   host.querySelectorAll('.sidetoggle button[data-s]').forEach(function (b) {
     b.onclick = function () { detail.side = b.dataset.s; renderMatchBody(m); };
@@ -1265,6 +1259,8 @@ function viewMatch(match) {
   var row = DB.byId[id];
   if (row && !row[M_DETAIL]) { renderSummaryOnly(row); return; }
 
+  // 받는 동안 다른 화면으로 옮겼으면 늦게 온 응답으로 그 화면을 덮지 않는다
+  var at = location.hash;
   app.innerHTML = '<div class="spinner">경기 불러오는 중…</div>';
   var p = MCACHE[id] ? Promise.resolve(MCACHE[id]) : getJSON('data/matches/' + id + '.json');
   // 영상 링크 목록은 첫 경기 상세를 열 때 한 번만 받아 둔다
@@ -1278,6 +1274,7 @@ function viewMatch(match) {
   Promise.all([p, v, c]).then(function (r) {
     var m = r[0];
     MCACHE[id] = m;
+    if (location.hash !== at) return;
     detail = { side: 'both', tab: 'all', view: 'overview', matrix: 'normal', round: 0 };
     var d = parseTs(m.date_utc);
     var t0 = m.teams[0], t1 = m.teams[1];
@@ -1319,7 +1316,7 @@ function viewMatch(match) {
       return getJSON('data/replays/' + key + '.json')
         .then(function (x) { RCACHE[key] = x; })
         .catch(function () { RCACHE[key] = null; });
-    })).then(function () { renderMatchBody(m); });
+    })).then(function () { if (location.hash === at) renderMatchBody(m); });
 
     app.querySelectorAll('.maptabs button').forEach(function (b) {
       b.onclick = function () {
@@ -1333,6 +1330,7 @@ function viewMatch(match) {
     });
     renderMatchBody(m);
   }).catch(function () {
+    if (location.hash !== at) return;
     if (row) { renderSummaryOnly(row); return; }
     app.innerHTML = '<div class="card"><div class="empty">이 경기는 데이터에 없습니다.</div></div>';
   });
@@ -1651,8 +1649,11 @@ function renderPlayers() {
 
 function viewPlayers() {
   if (!PLAYERS) {
+    // 6MB 를 받는 동안 다른 화면으로 옮겼으면 그 화면을 덮지 않는다
+    var at = location.hash;
     app.innerHTML = '<div class="spinner">선수 데이터 불러오는 중…</div>';
-    needPlayers().then(viewPlayers).catch(function () {
+    needPlayers().then(function () { if (location.hash === at) viewPlayers(); }).catch(function () {
+      if (location.hash !== at) return;
       app.innerHTML = '<div class="card"><div class="empty">선수 데이터를 불러오지 못했습니다.</div></div>';
     });
     return;
@@ -1683,11 +1684,12 @@ var PCACHE = {};
 var PLAYERS_REQ = null;
 
 /** players.json 을 처음 필요할 때 한 번만 받는다. renderPlayers 는 널 가드가 없으므로
-    반드시 이 게이트 뒤에서만 부를 것. */
+    반드시 이 게이트 뒤에서만 부를 것. 실패하면 요청을 비워 다음 진입 때 다시 받는다. */
 function needPlayers() {
   if (PLAYERS) return Promise.resolve(PLAYERS);
   if (!PLAYERS_REQ) {
-    PLAYERS_REQ = getJSON('data/players.json').then(function (x) { PLAYERS = x; return x; });
+    PLAYERS_REQ = getJSON('data/players.json').then(function (x) { PLAYERS = x; return x; })
+      .catch(function (e) { PLAYERS_REQ = null; throw e; });
   }
   return PLAYERS_REQ;
 }
@@ -1714,23 +1716,28 @@ function statCard(label, value, sub) {
 
 function viewPlayer(match) {
   var pid = +match[1];
+  var at = location.hash;
   app.innerHTML = '<div class="spinner">선수 기록 불러오는 중…</div>';
-  // PLAYERS 가 아직 없으면 이름·국적·커리어 통계가 통째로 빈 화면이 된다.
-  if (!PLAYERS) {
-    needPlayers().then(function () { viewPlayer(match); }).catch(function () { viewPlayer(match); });
-    return;
-  }
-  var p = (PLAYERS || []).filter(function (x) { return x.id === pid; })[0];
+  // PLAYERS 가 아직 없으면 이름·국적·커리어 통계가 통째로 빈 화면이 된다. 그래서 먼저 기다린다.
+  // 실패해도 한 번만 진행한다 — 여기서 viewPlayer 를 다시 부르면 같은 실패를 즉시 받아 끝없이 돈다.
+  needPlayers().then(load, load);
 
-  var got = PCACHE[pid] ? Promise.resolve(PCACHE[pid]) : getJSON('data/players/' + pid + '.json');
-  got.then(function (data) {
-    PCACHE[pid] = data;
-    renderPlayer(pid, p, data.matches || []);
-  }).catch(function () {
-    // 상세를 못 받아도 이름·국적·Rating·ACS 는 이미 PLAYERS 에 있다.
-    // 화면을 지워 버리면 가진 정보까지 같이 버리는 셈이다.
-    renderPlayer(pid, p, []);
-  });
+  function load() {
+    if (location.hash !== at) return;
+    var p = (PLAYERS || []).filter(function (x) { return x.id === pid; })[0];
+
+    var got = PCACHE[pid] ? Promise.resolve(PCACHE[pid]) : getJSON('data/players/' + pid + '.json');
+    got.then(function (data) {
+      PCACHE[pid] = data;
+      if (location.hash !== at) return;
+      renderPlayer(pid, p, data.matches || []);
+    }).catch(function () {
+      if (location.hash !== at) return;
+      // 상세를 못 받아도 이름·국적·Rating·ACS 는 이미 PLAYERS 에 있다.
+      // 화면을 지워 버리면 가진 정보까지 같이 버리는 셈이다.
+      renderPlayer(pid, p, []);
+    });
+  }
 }
 
 function renderPlayer(pid, p, rows) {
@@ -1887,14 +1894,17 @@ function econStatsHTML(e) {
 }
 
 function viewStats() {
+  var at = location.hash;
   app.innerHTML = '<h1>통계</h1><div class="spinner">불러오는 중…</div>';
   var got = STATS ? Promise.resolve(STATS) : getJSON('data/stats.json');
   got.then(function (s) {
     STATS = s;
+    if (location.hash !== at) return;
     app.innerHTML = '<h1>통계</h1>' +
       '<div class="sub">상세 스탯이 있는 경기 전체를 누적한 값입니다.</div>' +
       (s.econ ? econStatsHTML(s.econ) : '<div class="card"><div class="empty">통계가 없습니다.</div></div>');
   }).catch(function () {
+    if (location.hash !== at) return;
     app.innerHTML = '<h1>통계</h1><div class="card"><div class="empty">' +
       'stats.json 이 없습니다. <code>python build_data.py</code> 를 먼저 실행하세요.</div></div>';
   });
@@ -1906,7 +1916,7 @@ function viewStats() {
 
 /* ---- 서버 제어 (로컬 실행일 때만) ---------------------------------- */
 
-var LIVE = { on: false, timer: null, logFrom: 0 };
+var LIVE = { timer: null, logFrom: 0 };
 
 function liveStop() {
   if (LIVE.timer) { clearInterval(LIVE.timer); LIVE.timer = null; }
@@ -1918,7 +1928,7 @@ function liveInit() {
   if (!box) return;
   fetch('_api/status')
     .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-    .then(function (s) { LIVE.on = true; liveRender(s); liveWire(); })
+    .then(function (s) { liveRender(s); })
     .catch(function () { box.remove(); });
 }
 
@@ -1952,6 +1962,8 @@ function liveRender(s) {
     '</span></div>' +
     '<pre id="livelog" class="livelog"' + (running ? '' : ' hidden') + '></pre>';
   liveWire();
+  // 빌드 중에 새로고침하거나 탭을 다시 열면 폴링이 꺼져 있다. 로그를 처음부터 다시 받으며 이어 간다
+  if (running && !LIVE.timer) { LIVE.logFrom = 0; LIVE.timer = setInterval(livePoll, 1000); }
 }
 
 function liveWire() {
